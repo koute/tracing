@@ -151,9 +151,10 @@ extern crate alloc;
 /// [`Callsite::id`]: callsite/trait.Callsite.html#method.id
 #[macro_export]
 macro_rules! identify_callsite {
-    ($callsite:expr) => {
-        $crate::callsite::Identifier($callsite)
-    };
+    ($callsite:expr) => {{
+        let cs: &'static dyn $crate::callsite::Callsite = $callsite;
+        $crate::callsite::Identifier(cs as *const _ as *const ())
+    }};
 }
 
 /// Statically constructs new span [metadata].

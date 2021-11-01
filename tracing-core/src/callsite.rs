@@ -1,11 +1,6 @@
 //! Callsites represent the source locations from which spans or events
 //! originate.
-use crate::stdlib::{
-    fmt,
-    hash::{Hash, Hasher},
-    sync::Mutex,
-    vec::Vec,
-};
+use crate::stdlib::{fmt, hash::Hash, sync::Mutex, vec::Vec};
 use crate::{
     dispatcher::{self, Dispatch},
     metadata::{LevelFilter, Metadata},
@@ -91,7 +86,7 @@ pub trait Callsite: Sync {
 /// Two `Identifier`s are equal if they both refer to the same callsite.
 ///
 /// [`Callsite`]: ../callsite/trait.Callsite.html
-#[derive(Clone)]
+#[derive(Clone, Hash, Debug, PartialEq, Eq)]
 pub struct Identifier(
     /// **Warning**: The fields on this type are currently `pub` because it must
     /// be able to be constructed statically by macros. However, when `const
@@ -102,8 +97,11 @@ pub struct Identifier(
     /// the `Callsite::id` function instead.
     // TODO: When `Callsite::id` is a const fn, this need no longer be `pub`.
     #[doc(hidden)]
-    pub &'static dyn Callsite,
+    pub *const (),
 );
+
+unsafe impl Send for Identifier {}
+unsafe impl Sync for Identifier {}
 
 /// Clear and reregister interest on every [`Callsite`]
 ///
@@ -143,32 +141,4 @@ pub(crate) fn register_dispatch(dispatch: &Dispatch) {
     let mut registry = REGISTRY.lock().unwrap();
     registry.dispatchers.push(dispatch.registrar());
     registry.rebuild_interest();
-}
-
-// ===== impl Identifier =====
-
-impl PartialEq for Identifier {
-    fn eq(&self, other: &Identifier) -> bool {
-        core::ptr::eq(
-            self.0 as *const _ as *const (),
-            other.0 as *const _ as *const (),
-        )
-    }
-}
-
-impl Eq for Identifier {}
-
-impl fmt::Debug for Identifier {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Identifier({:p})", self.0)
-    }
-}
-
-impl Hash for Identifier {
-    fn hash<H>(&self, state: &mut H)
-    where
-        H: Hasher,
-    {
-        (self.0 as *const dyn Callsite).hash(state)
-    }
 }

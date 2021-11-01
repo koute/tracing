@@ -572,11 +572,6 @@ impl Field {
     pub fn name(&self) -> &'static str {
         self.fields.names[self.i]
     }
-
-    #[doc(hidden)]
-    pub const fn new_unchecked(i: usize, fields: FieldSet) -> Self {
-        Field { i, fields }
-    }
 }
 
 impl fmt::Display for Field {
@@ -623,6 +618,46 @@ impl Clone for Field {
 
 // ===== impl FieldSet =====
 
+const fn slice_eq(lhs: &[u8], rhs: &[u8]) -> bool {
+    if let ([first_lhs, tail_lhs @ ..], [first_rhs, tail_rhs @ ..]) = (lhs, rhs) {
+        *first_lhs == *first_rhs && slice_eq(tail_lhs, tail_rhs)
+    } else {
+        lhs.is_empty() && rhs.is_empty()
+    }
+}
+
+const fn str_eq(lhs: &str, rhs: &str) -> bool {
+    slice_eq(lhs.as_bytes(), rhs.as_bytes())
+}
+
+const fn split_first<'a>(slice: &'a [&str]) -> Option<(&'a str, &'a [&'a str])> {
+    if let [first, tail @ ..] = slice {
+        Some((first, tail))
+    } else {
+        None
+    }
+}
+
+const fn find_position_impl(
+    needle: &str,
+    haystack: &[&str],
+    current_index: usize,
+) -> Option<usize> {
+    if let Some((first, rest)) = split_first(haystack) {
+        if str_eq(first, needle) {
+            Some(current_index)
+        } else {
+            find_position_impl(needle, rest, current_index + 1)
+        }
+    } else {
+        None
+    }
+}
+
+const fn find_position(needle: &str, haystack: &[&str]) -> Option<usize> {
+    find_position_impl(needle, haystack, 0)
+}
+
 impl FieldSet {
     /// Constructs a new `FieldSet` with the given array of field names and callsite.
     pub const fn new(names: &'static [&'static str], callsite: callsite::Identifier) -> Self {
@@ -653,6 +688,20 @@ impl FieldSet {
                 callsite: self.callsite(),
             },
         })
+    }
+
+    pub const fn field_by_str(&self, name: &str) -> Option<Field> {
+        if let Some(i) = find_position(name, self.names) {
+            Some(Field {
+                i,
+                fields: FieldSet {
+                    names: self.names,
+                    callsite: callsite::Identifier(self.callsite.0),
+                },
+            })
+        } else {
+            None
+        }
     }
 
     /// Returns `true` if `self` contains the given `field`.

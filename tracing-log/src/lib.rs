@@ -295,35 +295,36 @@ static FIELD_NAMES: &[&str] = &[
     "log.line",
 ];
 
-macro_rules! fields {
-    ($cs:ident) => {
-        Fields {
-            message: Field::new_unchecked(
-                0,
-                field::FieldSet::new(FIELD_NAMES, identify_callsite!(&$cs)),
-            ),
-            target: Field::new_unchecked(
-                1,
-                field::FieldSet::new(FIELD_NAMES, identify_callsite!(&$cs)),
-            ),
-            module: Field::new_unchecked(
-                2,
-                field::FieldSet::new(FIELD_NAMES, identify_callsite!(&$cs)),
-            ),
-            file: Field::new_unchecked(
-                3,
-                field::FieldSet::new(FIELD_NAMES, identify_callsite!(&$cs)),
-            ),
-            line: Field::new_unchecked(
-                4,
-                field::FieldSet::new(FIELD_NAMES, identify_callsite!(&$cs)),
-            ),
+macro_rules! unwrap {
+    ($e:expr $(,)*) => {
+        match $e {
+            core::option::Option::Some(x) => x,
+            core::option::Option::None => {
+                loop {}
+            }
         }
     };
 }
 
+impl Fields {
+    const fn new(fieldset: &'static field::FieldSet) -> Self {
+        let message = unwrap!(fieldset.field_by_str("message"));
+        let target = unwrap!(fieldset.field_by_str("log.target"));
+        let module = unwrap!(fieldset.field_by_str("log.module_path"));
+        let file = unwrap!(fieldset.field_by_str("log.file"));
+        let line = unwrap!(fieldset.field_by_str("log.line"));
+        Fields {
+            message,
+            target,
+            module,
+            file,
+            line,
+        }
+    }
+}
+
 macro_rules! log_cs {
-    ($level:expr, $cs:ident, $meta:ident, $ty:ident) => {
+    ($level:expr, $cs:ident, $meta:ident, $fs:ident, $ty:ident) => {
         struct $ty;
         static $cs: $ty = $ty;
         static $meta: Metadata<'static> = Metadata::new(
@@ -343,6 +344,8 @@ macro_rules! log_cs {
                 &$meta
             }
         }
+
+        static $fs: Fields = Fields::new($meta.fields());
     };
 }
 
@@ -350,28 +353,37 @@ log_cs!(
     tracing_core::Level::TRACE,
     TRACE_CS,
     TRACE_META,
+    TRACE_FIELDS,
     TraceCallsite
 );
 log_cs!(
     tracing_core::Level::DEBUG,
     DEBUG_CS,
     DEBUG_META,
+    DEBUG_FIELDS,
     DebugCallsite
 );
-log_cs!(tracing_core::Level::INFO, INFO_CS, INFO_META, InfoCallsite);
-log_cs!(tracing_core::Level::WARN, WARN_CS, WARN_META, WarnCallsite);
+log_cs!(
+    tracing_core::Level::INFO,
+    INFO_CS,
+    INFO_META,
+    INFO_FIELDS,
+    InfoCallsite
+);
+log_cs!(
+    tracing_core::Level::WARN,
+    WARN_CS,
+    WARN_META,
+    WARN_FIELDS,
+    WarnCallsite
+);
 log_cs!(
     tracing_core::Level::ERROR,
     ERROR_CS,
     ERROR_META,
+    ERROR_FIELDS,
     ErrorCallsite
 );
-
-static TRACE_FIELDS: Fields = fields!(TRACE_CS);
-static DEBUG_FIELDS: Fields = fields!(DEBUG_CS);
-static INFO_FIELDS: Fields = fields!(INFO_CS);
-static WARN_FIELDS: Fields = fields!(WARN_CS);
-static ERROR_FIELDS: Fields = fields!(ERROR_CS);
 
 fn level_to_cs(level: Level) -> (&'static dyn Callsite, &'static Fields) {
     match level {
